@@ -1,0 +1,29 @@
+[package]
+name = "rs-notes"
+version = "0.1.0"
+authors = ["xiongdahu <xiongwengui67@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# build multiple binaries in one cargo build
+[[bin]]
+name = "rs-notes"
+path = "src/main.rs"
+
+[[bin]]
+name = "bin1"
+path = "src/bin/bin1.rs"
+
+[dependencies]
+redis = "0.15.0"
+actix-rt = "1.0.0"
+actix-web = "2.0.0"
+actix-files = "0.2.1"
+actix-session = "0.3.0"
+actix-utils = "1.0.3"
+
+futures = "0.3.1"
+env_logger = "0.5"
+bytes = "0.5"
+unicode-xid = "0.2.0"
