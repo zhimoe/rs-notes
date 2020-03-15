@@ -28,7 +28,11 @@ path = "src/lib.rs"
 # it use [[]], array in toml
 [[bin]]
 name = "my-cool-binary"
-path = "src/my-cool-binary.rs"
+path = "src/main.rs"
+
+[[bin]]
+name = "bin1"
+path = "src/bin/bin1.rs"
 ```
 
 one package(project) can only have one library crate, when the lib continues to get bigger, you want to split up the lib into multiple packages.
@@ -41,7 +45,7 @@ here is the actix-web package Cargo.toml file:
 ```toml
 [workspace]
 members = [
-  ".",
+  ".", # this is for current directory src/
   "awc",
   "actix-http",
   "actix-cors",
@@ -56,7 +60,6 @@ members = [
 ]
 # awc,actix-http... all are packages that contains their own Cargo.toml and src/lib.rs; 
 ``` 
-
 
 A crate is a compilation unit in Rust. 
 
@@ -83,9 +86,9 @@ music::popular::play();
 }
 ```
 
-the Structs members is all private by default even struct name is pub;
+> the Structs members is all private by default even struct name is pub;
 
-the Enums members is all public by default if the name is pub; 
+> the Enums members is all public by default if the name is pub; 
 
 ## use keyword
 
@@ -107,11 +110,6 @@ use std::{cmp::Ordering,io};
 use std::{self,Write};
 ```
 
-## split up mod into files
-1. the mod can be defined in mod_name.rs or mod_name/mod.rs. and nested mod can be in mod_name/nested_mod.rs.
-2. you can ref the nested_mod by use `mod nested_mod;` in mod_name.rs;
-
-
 ## summary
 
 1. 简单粗暴的理解,一个项目 == 一个package, 一个package可以包含多个crate. 
@@ -121,6 +119,7 @@ use std::{self,Write};
 
 5. mod是rust中代码的组织最小单元. `mod mod_name {}` 是定义一个mod;`mod mod_name; ` 表示将`mod_name.rs`或者`mod_name/mod.rs`中的内容插入到当前文件当前位置,并且插入内容被包含在`mod mod_name`中.
 6. crate内部的mod引用使用`self::`开头,引用外部crate则使用`crate::`开头.
+
 
 ## ownership borrowing and lifetimes
 ```rust
@@ -146,12 +145,12 @@ fn copy() {
     let s2 = s1; //s1 is invalid
     // println!("{}, world!", s1); //error, the "hello" ownership move to s2
 
-    let s3 = s2.clone(); //copy the heap value("hello")
+    let s3 = s2.clone(); //copy the heap value("hello"), impl the Clone trait
     println!("{}, world!", s2); // s2 still usable
 }
 
 // passing function arguments or return value by function is same as 
-//assigning a value to a variable, you need take care the ownership of heap value,
+// assigning a value to a variable, you need take care the ownership of heap value,
 fn ownership() {
     let x = 5;
     let x10 = plus10(x);// x still usable since the x is stack data
@@ -162,8 +161,8 @@ fn ownership() {
     takes_ownership(s); //s's value moves into the function and so is no longer valid here
 }
 
-fn plus10(i: i32) -> i32 {
-    i + 10
+fn plus10(i: i32) -> i32 { // since the i is primitive in stack, so the function return a new value  
+    i + 10 
 }
 
 fn takes_ownership(some_string: String) { // some_string comes into scope
@@ -171,13 +170,13 @@ fn takes_ownership(some_string: String) { // some_string comes into scope
 } // Here, some_string goes out of scope and `drop()` is called. The backing memory is freed.
 
 
-//References and Borrowing
-//since the ownership is too hard to track by coder's eye, rust introduce the ref and borrowing
+// References and Borrowing:
+// since the ownership is too hard to track by coder's eye, rust introduce the ref and borrowing
 // a function that accept a ref will not takeover a value's ownership when the function is called ...
 // also will not drop the value's backend memory when function is return.
 
 
-//a variable can only have one mut ref or many immutable ref in a same scope;
+// a variable can only have one mut ref or many immutable ref in a same scope;
 
 //dangling reference
 fn dangle() -> &String {
@@ -194,13 +193,89 @@ fn dangle() -> &String {
 //  3b. in heap: Strings implement Deref<Target=str>, and so inherit all of str's methods.
 //  3c. in stack: when use str::from_utf8(x).unwrap(); x is stack-value ref
 
-//since the str is unknown size, one can only use it by &str, called slice. slice is a view of some data.
+//> the &str param can accept a &String since the String implement Deref<Target=str>.
+
+//since the str is unknown size, one can only use it by &str, called slice. slice is a view of some data. 
+
 
 fn str() {
     let s = "hello str";//The type of s here is &str: it’s a slice pointing to that specific point of the binary.
     // This is also why string literals are immutable; &str is an immutable reference.
 }
 
+```
+
+## lifetimes are only about reference
+```rust
+//a ref must die before its referent
+
+//a string slice has static lifetime
+
+//let s: &str = "hello";
+//means
+//let s: &’static str = "hello";     //
+
 
 
 ```
+in rust: 
+- A resource can only have one owner at a time. When it goes out of the scope, Rust removes it from the Memory.
+
+- When we want to reuse the same resource, we are referencing it/ borrowing its content.
+
+- When dealing with references, we have to specify lifetime annotations to provide instructions for the compiler to set how long those referenced resources should be alive.
+
+- ⭐ But because of lifetime annotations make the code more verbose, in order to make common patterns more ergonomic, Rust allows lifetimes to be elided/omitted in fn definitions. In this case, the compiler assigns lifetime annotations implicitly.
+
+
+```rust
+// No inputs, return a reference
+fn function1<'a>() -> &'a str {}
+
+// Single input
+fn function2<'a>(x: &'a str) {}
+
+// Single input and output, both have the same lifetime
+// The output should live at least as long as input exists
+fn function3<'a>(x: &'a str) -> &'a str {} // no need the lifetime annotation,lifetime elision
+
+// Multiple inputs, only one input and the output share same lifetime
+// The output should live at least as long as y exists
+fn function4<'a>(x: i32, y: &'a str) -> &'a str {}
+
+// Multiple inputs, both inputs and the output share same lifetime
+// The output should live at least as long as x and y exist
+fn function5<'a>(x: &'a str, y: &'a str) -> &'a str {}
+
+// Multiple inputs, inputs can have different lifetimes 🔎
+// The output should live at least as long as x exists
+fn function6<'a, 'b>(x: &'a str, y: &'b str) -> &'a str {}
+```
+
+## lifetimes in struct/enum
+```rust
+// Single element
+// Data of x should live at least as long as Struct exists
+struct Struct1<'a> {
+    x: &'a str
+}
+
+// Multiple elements
+// Data of x and y should live at least as long as Struct exists
+struct Struct2<'a> {
+    x: &'a str,
+    y: &'a str
+}
+
+
+// Variant with a single element
+// Data of the variant should live at least as long as Enum exists
+enum Enum<'a> {
+    Variant(&'a Type)
+}
+```
+
+
+## 
+
+## feature

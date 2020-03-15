@@ -15,15 +15,25 @@ path = "src/main.rs"
 name = "bin1"
 path = "src/bin/bin1.rs"
 
+
+[workspace]
+members = [
+".",
+"macro_examples"
+]
+
+
 [dependencies]
+image="0.22.5"
+rqrr=""
 redis = "0.15.0"
 actix-rt = "1.0.0"
 actix-web = "2.0.0"
 actix-files = "0.2.1"
 actix-session = "0.3.0"
 actix-utils = "1.0.3"
-
 futures = "0.3.1"
 env_logger = "0.5"
 bytes = "0.5"
 unicode-xid = "0.2.0"
+
