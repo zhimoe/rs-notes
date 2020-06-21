@@ -9,31 +9,56 @@ edition = "2018"
 # build multiple binaries in one cargo build
 [[bin]]
 name = "rs-notes"
-path = "src/main.rs"
+path = "src/actix_web.rs"
 
 [[bin]]
 name = "bin1"
-path = "src/bin/bin1.rs"
+path = "src/bin/ownship.rs"
 
 
 [workspace]
 members = [
 ".",
-"macro_examples"
 ]
 
 
 [dependencies]
-image="0.22.5"
-rqrr=""
-redis = "0.15.0"
+image="*"
+redis = "*"
 actix-rt = "1.0.0"
 actix-web = "2.0.0"
-actix-files = "0.2.1"
+actix-files = "*"
 actix-session = "0.3.0"
 actix-utils = "1.0.3"
 futures = "0.3.1"
-env_logger = "0.5"
+env_logger = "*"
 bytes = "0.5"
-unicode-xid = "0.2.0"
+
+# reqwest
+scroll = "0.10"
+log = "*"
+reqwest = { version="*",features = ["json"] }
+tokio =  { version = "0.2", features = ["full"] }
+serde = { version = "*", features = ["derive"] }
+ferris-says = "*"
+
+# search
+threadpool = "*"
+
+# warp
+warp = "0.2.*"
+
+# rocket
+rocket = "0.4"
+
+#
+ripemd128 = "0.1.2"
+salsa20 = "0.5.2"
+adler32 = "*"
+regex="*"
+byteorder="*"
+rust-lzo = "0.6.2"
+libsqlite3-sys = "0.18.0"
+encoding_rs = "0.8.23"
+rbtree = "0.1"
 
