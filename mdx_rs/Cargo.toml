@@ -1,47 +1,16 @@
 [package]
-name = "rs-notes"
+name = "mdx_rs"
 version = "0.1.0"
-authors = ["xiongdahu <xiongwengui67@gmail.com>"]
+authors = ["cod3fn <xiongwengui67@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-# build multiple binaries in one cargo build
-[[bin]]
-name = "rs-notes"
-path = "src/actix_web.rs"
-
-[[bin]]
-name = "bin1"
-path = "src/bin/ownship.rs"
-
-
-[workspace]
-members = [
-".",
-"mdx_rs"
-]
-
-
 [dependencies]
-image="*"
-redis = "*"
-actix-rt = "1.0.0"
-actix-web = "2.0.0"
-actix-files = "*"
-actix-session = "0.3.0"
-actix-utils = "1.0.3"
-futures = "0.3.1"
-env_logger = "*"
-bytes = "0.5"
-
-# reqwest
-scroll = "0.10"
 log = "*"
 reqwest = { version="*",features = ["json"] }
 tokio =  { version = "0.2", features = ["full"] }
 serde = { version = "*", features = ["derive"] }
-ferris-says = "*"
 
 # search
 threadpool = "*"
