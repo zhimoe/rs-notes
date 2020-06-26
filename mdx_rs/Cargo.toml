@@ -23,6 +23,7 @@ rocket = "0.4"
 
 #
 ripemd128 = "0.1.2"
+hex-literal="*"
 salsa20 = "0.5.2"
 adler32 = "*"
 regex="*"
@@ -32,3 +33,6 @@ libsqlite3-sys = "0.18.0"
 encoding_rs = "0.8.23"
 rbtree = "0.1"
 derive_builder="*"
+miniz_oxide = "0.3.7"
+flate2 = "1.0"
+

@@ -19,6 +19,8 @@ pub struct HeaderTag {
     pub left2right: bool,
     pub datasourceformat: String,
     pub stylesheet: String,
+    pub _key_block_offset: u64,
+    pub _record_block_offset: u64,
 }
 
 #[derive(Debug, Default)]
@@ -35,6 +37,8 @@ pub struct HeaderTagBuilder {
     pub left2right: bool,
     pub datasourceformat: String,
     pub stylesheet: String,
+    pub _key_block_offset: u64,
+    pub _record_block_offset: u64,
 }
 
 impl HeaderTagBuilder {
@@ -86,6 +90,14 @@ impl HeaderTagBuilder {
         self.stylesheet = stylesheet;
         self
     }
+    pub fn key_block_offset(&mut self, _key_block_offset: u64) -> &mut Self {
+        self._key_block_offset = _key_block_offset;
+        self
+    }
+    pub fn record_block_offset(&mut self, _record_block_offset: u64) -> &mut Self {
+        self._record_block_offset = _record_block_offset;
+        self
+    }
     pub fn build(&self) -> HeaderTag {
         HeaderTag {
             file: self.file.to_owned(),
@@ -101,6 +113,8 @@ impl HeaderTagBuilder {
             left2right: self.left2right,
             datasourceformat: self.datasourceformat.to_owned(),
             stylesheet: self.stylesheet.to_owned(),
+            _key_block_offset: self._key_block_offset,
+            _record_block_offset: self._record_block_offset,
         }
     }
 }
