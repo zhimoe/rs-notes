@@ -1,28 +1,30 @@
-use rbtree::RBTree;
-use std::io::{BufReader, Read, Seek, SeekFrom, Write};
-use std::fs::File;
-use adler32::RollingAdler32;
-
-use regex::Regex;
-use byteorder::{LittleEndian, ReadBytesExt, BigEndian, WriteBytesExt};
-use std::collections::HashMap;
-use crate::util::{NumberBytes, adler32_checksum};
-use crate::model::header::HeaderTag;
-
-use miniz_oxide::inflate::decompress_to_vec;
-
 #[macro_use]
 extern crate hex_literal;
 extern crate ripemd128;
 
-use ripemd128::{Ripemd128, Digest};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+
+use adler32::RollingAdler32;
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use flate2::write::ZlibDecoder;
+use miniz_oxide::inflate::decompress_to_vec;
+use rbtree::RBTree;
+use regex::Regex;
+use ripemd128::{Digest, Ripemd128};
+
+use rusqlite::{params, Connection, Result};
+
+use crate::model::header::HeaderTag;
+use crate::util::{adler32_checksum, NumberBytes};
 
 
 mod model;
 mod util;
 
-fn main() {
+
+fn main() -> Result<()> {
     let mdxfile = String::from("/home/cod3fn/code/rs-notes/resources/LSC4.mdx");
     let mut htb = model::header::HeaderTagBuilder::default();
     htb.file(mdxfile.to_owned());
@@ -130,7 +132,7 @@ fn main() {
         let _key_block_info_decompress_size = nb.read_number(_number_width);
     }
     let key_block_info_size = nb.read_number(_number_width);
-    let _key_block_size = nb.read_number(_number_width);
+    let key_block_size = nb.read_number(_number_width);
 
 
     // reade 4 bytes: adler32 checksum of key block info, in big endian
@@ -150,19 +152,168 @@ fn main() {
     htb.record_block_offset(current_pos);
 
     let header_tag = htb.build();
-    let mut key_block_info_list = decode_key_block_info_list(&key_block_info_bytes, &header_tag);
+    let mut key_block_info_list = decode_key_block_info(&key_block_info_bytes, &header_tag);
 
-    // let mut key_block_bytes = vec![0; key_block_size.unwrap() as usize];
-    // reader.read_exact(&mut key_block_info_bytes);
+    let mut key_block_bytes = vec![0; key_block_size.unwrap() as usize];
+    reader.read_exact(&mut key_block_bytes);
+
+    let mut key_list = decode_key_block(&key_block_bytes, &key_block_info_list);
+
+    let _record_block_offset = reader.seek(SeekFrom::Current(0)).expect("Could not get current position!");
+    println!("_record_block_offset={}", _record_block_offset);
+
+    //parse record block
+    let num_record_blocks = read_number(&mut reader, _number_width);
+    let num_entries = read_number(&mut reader, _number_width);
+    let record_block_info_size = read_number(&mut reader, _number_width);
+    let record_block_size = read_number(&mut reader, _number_width);
+
+    let mut record_block_info_list: Vec<(usize, usize)> = vec![];
+    let mut size_counter = 0;
+    // read all record_block_info bytes
+    for i in 0..num_record_blocks {
+        let compressed_size = read_number(&mut reader, _number_width);
+        let decompressed_size = read_number(&mut reader, _number_width);
+        record_block_info_list.push((compressed_size, decompressed_size));
+        size_counter += _number_width * 2
+    }
+    assert_eq!(size_counter, record_block_info_size);
+
+    // start read record block, decompress it
+    let mut record_list: Vec<model::dict_index::Record> = vec![]; // important!
+    let mut record_block_bytes_size_counter = 0;
+    let mut i: usize = 0;
+    let mut offset: usize = 0;
+    for (c_size, d_size) in record_block_info_list {
+        let cur_pos = reader.seek(SeekFrom::Current(0)).expect("Could not get current position!");
+        // println!("cur_pos={}", cur_pos);
+        let mut record_block_compressed: Vec<u8> = vec![0; c_size];
+        reader.read_exact(&mut record_block_compressed);
+
+        let record_block_type = &record_block_compressed[0..4];
+        let adler32_bytes = &record_block_compressed[4..8];
+        let mut record_block_decompressed = Vec::new();
+        let mut _type = 2;
+        match record_block_type {
+            b"\x02\x00\x00\x00" => {
+                _type = 2;
+                let mut z = ZlibDecoder::new(record_block_decompressed);
+                z.write_all(&record_block_compressed[8..]).unwrap();
+                record_block_decompressed = z.finish().unwrap();
+                if !adler32_checksum(&record_block_decompressed, &adler32_bytes, true) {
+                    panic!("record block adler32 checksum failed");
+                }
+            }
+            b"\x01\x00\x00\x00" => { println!("\x01\x00\x00\x00") }
+            b"\x00\x00\x00\x00" => { println!("\x00\x00\x00\x00") }
+            _ => {}
+        }
+
+        // split record block into record according to the offset info from key block
+        while i < key_list.len() {
+            let (id, text) = &key_list[i];
+            let mut start = *id as usize;
+            if start - offset >= d_size {
+                break;
+            }
+            let mut record_end: usize = 0;
+            if i < key_list.len() - 1 {
+                record_end = key_list[i + 1].0 as usize;
+            } else {
+                record_end = d_size + offset;
+            }
+            let idx = model::dict_index::Record {
+                file_pos: cur_pos as usize,
+                compressed_size: c_size,
+                decompressed_size: d_size,
+                record_block_type: _type,
+                record_start: id.clone() as usize,
+                text: text.to_string(),
+                offset: offset as usize,
+                record_end: record_end as usize,
+            };
+            i += 1;
+
+            // println!("start={},record_end={},offset={}", &start, &record_end, &offset);
+            let mut record = &record_block_decompressed[(start - offset)..(record_end - offset)];
+            // println!("{:x? }", &record[..(&record.len() - 3)]);
+            let record_text = String::from_utf8_lossy(&record[..(&record.len() - 3)]);
+            // if self._substyle and self._stylesheet:
+            //     record = self._substitute_stylesheet(record)
+
+            record_list.push(idx)
+        }
+        offset += d_size;
+        record_block_bytes_size_counter += c_size;
+    }
+
+    // write the record_list info to sqlite
+    let mut db_file = htb.file.clone();
+    db_file.push_str(".db");
+    if std::path::PathBuf::from(&db_file).exists() {
+        println!("Removing old database");
+        std::fs::remove_file(&db_file);
+    }
+
+
+    let conn = Connection::open(&db_file)?;
+
+    conn.execute(
+        "create table if not exists MDX_INDEX (
+                key_text text not null,
+                file_pos integer,
+                compressed_size integer,
+                decompressed_size integer,
+                record_block_type integer,
+                record_start integer,
+                record_end integer,
+                offset integer
+         )",
+        params![],
+    )?;
+
+    if std::path::PathBuf::from(db_file).exists() {
+        println!("db_file created");
+    }
+
+    //
+    // for r in &record_list {
+    //     conn.execute(
+    //         "INSERT INTO MDX_INDEX VALUES (?,?,?,?,?,?,?,?)",
+    //         params![r.text, r.file_pos as i32,r.compressed_size as i32,r.decompressed_size as i32 ,r.record_block_type,r.record_start as i32,r.record_end as i32 ,r.offset as i32],
+    //     )?;
+    //     let last_id: String = conn.last_insert_rowid().to_string();
+    // }
+    // let mut stmt = conn.prepare("SELECT count(1) FROM MDX_INDEX")?;
+    // let count = stmt.query_map(params![], |row| {
+    //     Ok(row.get(0)?)
+    // })?;
+    // for c in count {
+    //     println!("count= {:?}", c.unwrap());
+    // }
 
     // key_block_info = f.read(key_block_info_size)
     // key_block_info_list = self._decode_key_block_info(key_block_info)
     // assert (num_key_blocks == len(key_block_info_list))
     println!("mdx version {}", _version);
     println!("mdx filename {}", &htb.file);
+    Ok(())
 }
 
-pub fn decode_key_block_info_list(key_block_info_compressed: &Vec<u8>, header: &HeaderTag) -> Vec<(u64, u64)> {
+pub fn read_number(reader: &mut BufReader<File>, width: usize) -> usize {
+    let mut buf: Vec<u8> = vec![0; width];
+    reader.read_exact(&mut buf);
+    let mut slice = &buf[..];
+    return match width {
+        8 => slice.read_u64::<BigEndian>().unwrap() as usize,
+        4 => slice.read_u32::<BigEndian>().unwrap() as usize,
+        2 => slice.read_u16::<BigEndian>().unwrap() as usize,
+        _ => 0,
+    };
+}
+
+
+pub fn decode_key_block_info(key_block_info_compressed: &Vec<u8>, header: &HeaderTag) -> Vec<(usize, usize)> {
     let mut first4 = &key_block_info_compressed[0..4];
     let mut adler32_bytes = &key_block_info_compressed[4..8];
     println!("adler32_bytes={:x?}", &adler32_bytes);
@@ -198,7 +349,7 @@ pub fn decode_key_block_info_list(key_block_info_compressed: &Vec<u8>, header: &
             key_block_info = z.finish().unwrap();
 
             //data now is decrypted, then decompress
-            println!("key_block_info={:x?}", &key_block_info);
+            // println!("key_block_info={:x?}", &key_block_info);
             if !adler32_checksum(&key_block_info, &adler32_bytes, true) {
                 panic!("key_block_info adler32 checksum failed!")
             }
@@ -218,14 +369,14 @@ pub fn decode_key_block_info_list(key_block_info_compressed: &Vec<u8>, header: &
         byte_width = 2;
         text_term = 1;
     }
-    let num_width = 8;
+    let NUM_WIDTH = 8;
     let mut i = 0;
-    let mut key_block_info_list: Vec<(u64, u64)> = vec![];
+    let mut key_block_info_list: Vec<(usize, usize)> = vec![];
     use byteorder::{LittleEndian, ReadBytesExt, BigEndian};
     while i < key_block_info.len() {
-        num_enteries += unpack_u64(&key_block_info[i..(i + num_width)]);
+        num_enteries += unpack_u64(&key_block_info[i..(i + NUM_WIDTH)]);
         println!("num_enteries={}, it should be 543255", &num_enteries);
-        i += num_width;
+        i += NUM_WIDTH;
         println!("current i={}", &i);
         let text_head_size = unpack_u16(&key_block_info[i..(i + byte_width)]);
         i += byte_width;
@@ -237,15 +388,80 @@ pub fn decode_key_block_info_list(key_block_info_compressed: &Vec<u8>, header: &
         i += byte_width; //todo:
         i += (text_tail_size + text_term) as usize;
 
-        let key_block_compressed_size = unpack_u64(&key_block_info[i..(i + num_width)]);
-        i += num_width;
-        let key_block_decompressed_size = unpack_u64(&key_block_info[i..(i + num_width)]);
-        i += num_width;
-        key_block_info_list.push((key_block_compressed_size, key_block_decompressed_size))
+        let key_block_compressed_size = unpack_u64(&key_block_info[i..(i + NUM_WIDTH)]);
+        i += NUM_WIDTH;
+        let key_block_decompressed_size = unpack_u64(&key_block_info[i..(i + NUM_WIDTH)]);
+        i += NUM_WIDTH;
+        key_block_info_list.push((key_block_compressed_size as usize, key_block_decompressed_size as usize))
     }
     println!("the key_block_info_list len= {}", &key_block_info_list.len());
     return key_block_info_list;
 }
+
+fn decode_key_block(key_block_bytes: &Vec<u8>, key_block_info_list: &Vec<(usize, usize)>) -> Vec<(i32, String)> {
+    let mut key_list: Vec<(i32, String)> = vec![];
+    let mut i = 0;
+    let mut start = 0;
+    let mut end = i;
+    for (key_block_compressed_size, key_block_decompressed_size) in key_block_info_list {
+        start = i;
+        end += *key_block_compressed_size;
+        let key_block_type = &key_block_bytes[start as usize..(start + 4) as usize];
+        let adler32_bytes = &key_block_bytes[(start + 4) as usize..(start + 8) as usize];
+        let mut key_block = Vec::new();
+
+        match key_block_type {
+            b"\x02\x00\x00\x00" => {
+                let mut z = ZlibDecoder::new(key_block);
+                z.write_all(&key_block_bytes[(start + 8)..end]).unwrap();
+                key_block = z.finish().unwrap();
+                let one_key_list = split_key_block(&key_block);
+                for t in one_key_list {
+                    key_list.push(t);
+                }
+            }
+            b"\x01\x00\x00\x00" => { println!("\x01\x00\x00\x00") }
+            b"\x00\x00\x00\x00" => { println!("\x00\x00\x00\x00") }
+            _ => {}
+        }
+
+        i += *key_block_compressed_size as usize;
+    }
+
+    return key_list;
+}
+
+
+fn split_key_block(key_block: &Vec<u8>) -> Vec<(i32, String)> {
+    let NUM_WIDTH: usize = 8;
+    let mut key_list: Vec<(i32, String)> = vec![];
+    let mut key_start_index = 0;
+    let mut key_end_index = 0;
+
+    let delimiter = b"\x00";
+    let width = 1;
+    let mut i = 0;
+
+    while key_start_index < key_block.len() {
+        let slice = &key_block[key_start_index..(key_start_index + NUM_WIDTH)];
+        let key_id = unpack_u64(slice);
+
+        i = key_start_index + NUM_WIDTH;
+        while i < key_block.len() {
+            if &key_block[i..(i + width)] == delimiter {
+                key_end_index = i;
+                break;
+            }
+            i += width;
+        }
+        let key_text = std::str::from_utf8(&key_block[(key_start_index + NUM_WIDTH)..(key_end_index)]).unwrap().to_string();
+        key_start_index = key_end_index + width;
+        // println!("key_id={},key_text={}", &key_id, &key_text);
+        key_list.push((key_id as i32, key_text));
+    }
+    return key_list;
+}
+
 
 pub fn unpack_u64(byte: &[u8]) -> u64 {
     let mut out: &[u8] = byte.clone();
