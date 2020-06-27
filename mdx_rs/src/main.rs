@@ -256,7 +256,7 @@ fn main() -> Result<()> {
     }
 
 
-    let conn = Connection::open(&db_file)?;
+    let mut conn = Connection::open(&db_file)?;
 
     conn.execute(
         "create table if not exists MDX_INDEX (
@@ -276,25 +276,22 @@ fn main() -> Result<()> {
         println!("db_file created");
     }
 
-    //
-    // for r in &record_list {
-    //     conn.execute(
-    //         "INSERT INTO MDX_INDEX VALUES (?,?,?,?,?,?,?,?)",
-    //         params![r.text, r.file_pos as i32,r.compressed_size as i32,r.decompressed_size as i32 ,r.record_block_type,r.record_start as i32,r.record_end as i32 ,r.offset as i32],
-    //     )?;
-    //     let last_id: String = conn.last_insert_rowid().to_string();
-    // }
-    // let mut stmt = conn.prepare("SELECT count(1) FROM MDX_INDEX")?;
-    // let count = stmt.query_map(params![], |row| {
-    //     Ok(row.get(0)?)
-    // })?;
-    // for c in count {
-    //     println!("count= {:?}", c.unwrap());
-    // }
+    let tx = conn.transaction()?;
 
-    // key_block_info = f.read(key_block_info_size)
-    // key_block_info_list = self._decode_key_block_info(key_block_info)
-    // assert (num_key_blocks == len(key_block_info_list))
+
+    for r in &record_list {
+        tx.execute(
+            "INSERT INTO MDX_INDEX VALUES (?,?,?,?,?,?,?,?)",
+            params![r.text, r.file_pos as i32,r.compressed_size as i32,r.decompressed_size as i32 ,r.record_block_type,r.record_start as i32,r.record_end as i32 ,r.offset as i32],
+        )?;
+    }
+    tx.commit();
+
+    let mut stmt = conn.prepare("SELECT count(1) FROM MDX_INDEX")?;
+    let mut rows = stmt.query(params![])?;
+    let count = rows.next().unwrap().unwrap();
+    println!("the word key count={:?}", count.get(0).unwrap());
+
     println!("mdx version {}", _version);
     println!("mdx filename {}", &htb.file);
     Ok(())
