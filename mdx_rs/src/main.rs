@@ -3,19 +3,18 @@
 #[macro_use]
 extern crate rocket;
 
-use std::borrow::{Borrow, Cow};
-use std::fs::{File, read};
+use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
-use std::io::SeekFrom::End;
+
 
 use flate2::write::ZlibDecoder;
 use rocket::config::{Config, Environment};
-use rocket::response::{content::{Html, Json}, Debug};
+use rocket::response::content::{Html};
 use rocket_contrib::serve::StaticFiles;
 use rusqlite::{Connection, named_params, params, Result};
 
 use crate::checksum::adler32_checksum;
-use crate::mdx::{Header, Mdx, RecordIndex};
+use crate::mdx::{Mdx, RecordIndex};
 use crate::unpack::Endian;
 
 mod checksum;
@@ -81,13 +80,13 @@ fn main() -> Result<()> {
             r.offset as i32],
         )?;
     }
-    tx.commit();
+    tx.commit().expect("tx commit error");
     println!("insert all mdx record index to sqlite");
 
-    #[catch(404)]
-    fn not_found(req: &rocket::Request) -> String {
-        format!("{:?}", "")
-    }
+    // #[catch(404)]
+    // fn not_found(req: &rocket::Request) -> String {
+    //     format!("{:?}", "")
+    // }
 
     #[get("/q/<word>")]
     fn index(word: String) -> Html<String> {
@@ -108,12 +107,10 @@ fn main() -> Result<()> {
             offset: row.get::<usize, i32>(7).unwrap() as u32,
         };
 
-        let mut result = String::from("");
-
         let idx = r;
         println!("Found Dict Index {:?}", &idx);
         let mut reader = BufReader::new(File::open("/home/cod3fn/code/rs-notes/resources/LSC4.mdx").unwrap());
-        reader.seek(SeekFrom::Start(idx.file_pos as u64));
+        reader.seek(SeekFrom::Start(idx.file_pos as u64)).expect("reader seek error");
 
 
         let mut record_block_compressed: Vec<u8> = vec![0; idx.compressed_size as usize];

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
@@ -30,7 +29,7 @@ impl NumberBytes {
 
 pub fn read_number(reader: &mut BufReader<File>, width: usize) -> usize {
     let mut buf: Vec<u8> = vec![0; width];
-    reader.read_exact(&mut buf);
+    reader.read_exact(&mut buf).expect("read_exact error");
     let mut slice = &buf[..];
     return match width {
         8 => slice.read_u64::<BigEndian>().unwrap() as usize,
