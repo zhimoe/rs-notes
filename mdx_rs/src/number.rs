@@ -1,17 +1,15 @@
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
+use byteorder::{BigEndian, ReadBytesExt};
 
 pub struct NumberBytes {
-    bytes: Vec<u8>,
     tail: Vec<u8>,
 }
 
 impl NumberBytes {
     pub fn new(bytes: &Vec<u8>) -> Self {
         NumberBytes {
-            bytes: bytes.clone(),
             tail: bytes.clone(),
         }
     }

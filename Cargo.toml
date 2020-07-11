@@ -19,7 +19,8 @@ path = "src/bin/ownship.rs"
 [workspace]
 members = [
 ".",
-"mdx_rs"
+"mdx_rs",
+"rkt"
 ]
 
 
